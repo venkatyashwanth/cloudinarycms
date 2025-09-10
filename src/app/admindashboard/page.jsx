@@ -2,38 +2,52 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function UploadMovie() {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]); // Array of { file: File, name: string }
   const [url, setUrl] = useState("");
-  const [name, setName] = useState("");
-  const [folder, setFolder] = useState("netflix-clone");
+  const [folders, setFolders] = useState([]);
+  const [folder, setFolder] = useState(""); // 👈 added
+
   const [loading, setLoading] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [error, setError] = useState("");
   const [images, setImages] = useState([]);
   const [copied, setCopied] = useState("");
   const [deleting, setDeleting] = useState(new Set());
-
   const fileInputRef = useRef(null);
 
-  const folders = ["netflix-clone", "movies", "posters", "thumbnails"];
+  // ✅ Fetch folders list from Cloudinary
+  useEffect(() => {
+    const fetchFolders = async () => {
+      try {
+        const res = await fetch("/api/folders");
+        const data = await res.json();
+        if (res.ok) {
+          setFolders(data.folders);
+          if (data.folders.length > 0) {
+            setFolder(data.folders[0]); // default to first folder
+          }
+        } else {
+          console.error("Failed to fetch folders:", data.error);
+        }
+      } catch (err) {
+        console.error("Error fetching folders:", err);
+      }
+    };
+    fetchFolders();
+  }, []);
 
-  // Fetch images from selected folder
+  // ✅ Fetch images for selected folder
   const fetchImages = async () => {
+    if (!folder) return;
     setGalleryLoading(true);
     setImages([]);
     try {
-      const res = await fetch(`../api/list?folder=${folder}`);
-      if (!res.ok) {
-        console.error("Failed to fetch images", res.status);
-        setImages([]);
-        return;
-      }
-
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : { resources: [] };
+      const res = await fetch(`/api/list?folder=${folder}`);
+      if (!res.ok) throw new Error("Failed to fetch images");
+      const data = await res.json();
       setImages(data.resources || []);
     } catch (err) {
-      console.error("Failed to fetch images", err);
+      console.error("Failed to fetch images:", err);
       setImages([]);
     } finally {
       setGalleryLoading(false);
@@ -44,74 +58,86 @@ export default function UploadMovie() {
     fetchImages();
   }, [folder]);
 
-  // Upload image
+  // ✅ Upload multiple files
   const handleUpload = async () => {
-    if (!file || !name) {
-      setError("Please select a file and enter a name");
-      return;
-    }
+    if (!files.length) return setError("Please select at least one file");
+    if (!folder) return setError("Please select a folder");
 
     setLoading(true);
     setError("");
     setUrl("");
 
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onloadend = async () => {
-      try {
-        const res = await fetch("../api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file: reader.result,
-            publicId: name,
-            folder: folder, // send selected folder
-          }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || "Upload failed");
-        } else {
-          setUrl(data.url);
-          setFile(null);
-          setName("");
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          fetchImages();
-        }
-      } catch (err) {
-        setError("Upload failed. Try again.");
-      } finally {
-        setLoading(false);
-      }
-    };
-  };
-
-  // Delete image
-  const handleDelete = async (shortId) => {
-    if (!confirm(`Delete ${shortId}?`)) return;
-
-    setDeleting((prev) => new Set(prev).add(shortId));
-
     try {
-      const res = await fetch("../api/delete", {
+      // Convert files to Base64
+      const filePromises = files.map(
+        ({ file, name }) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = () => resolve({ file: reader.result, publicId: name });
+            reader.onerror = reject;
+          })
+      );
+
+      const filesData = await Promise.all(filePromises);
+
+      const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicId: shortId, folder: folder }),
+        body: JSON.stringify({ files: filesData, folder }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        fetchImages();
+      if (!res.ok) {
+        setError(data.error || "Upload failed");
       } else {
-        alert(data.error || "Delete failed");
+        let msg = `✅ Uploaded: ${data.uploaded.length} file(s)`;
+        if (data.skipped?.length) msg += `, Skipped: ${data.skipped.length}`;
+        if (data.failed?.length) msg += `, Failed: ${data.failed.length}`;
+        setUrl(msg);
+
+        if (data.failed?.length) {
+          alert(
+            "Some files failed to upload:\n" +
+            data.failed.map(f => `${f.publicId}: ${f.error}`).join("\n")
+          );
+        }
+
+        // Add uploaded files to gallery instantly
+        setImages(prev => [
+          ...data.uploaded.map(f => ({ secure_url: f.url, public_id: `${folder}/${f.publicId}` })),
+          ...prev,
+        ]);
       }
     } catch (err) {
+      console.error(err);
+      setError("Upload failed. Try again.");
+    } finally {
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setLoading(false);
+    }
+  };
+
+  // ✅ Delete image
+  const handleDelete = async shortId => {
+    if (!confirm(`Delete ${shortId}?`)) return;
+    setDeleting(prev => new Set(prev).add(shortId));
+
+    try {
+      const res = await fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicId: shortId, folder }),
+      });
+      const data = await res.json();
+      if (res.ok) fetchImages();
+      else alert(data.error || "Delete failed");
+    } catch {
       alert("Delete failed. Try again.");
     } finally {
-      setDeleting((prev) => {
+      setDeleting(prev => {
         const newSet = new Set(prev);
         newSet.delete(shortId);
         return newSet;
@@ -119,7 +145,7 @@ export default function UploadMovie() {
     }
   };
 
-  // Copy URL
+  // ✅ Copy URL
   const handleCopy = (url, publicId) => {
     navigator.clipboard.writeText(url).then(() => {
       setCopied(publicId);
@@ -135,11 +161,9 @@ export default function UploadMovie() {
       <div style={{ marginBottom: "10px" }}>
         <label>
           Select Folder:{" "}
-          <select value={folder} onChange={(e) => setFolder(e.target.value)}>
-            {folders.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
+          <select value={folder} onChange={e => setFolder(e.target.value)} style={{ minWidth: "200px" }}>
+            {folders.map(f => (
+              <option key={f} value={f}>{f}</option>
             ))}
           </select>
         </label>
@@ -150,29 +174,85 @@ export default function UploadMovie() {
         <input
           type="file"
           ref={fileInputRef}
-          onChange={(e) => {
-            const selectedFile = e.target.files[0];
-            if (selectedFile) {
-              setFile(selectedFile);
-              // Always overwrite name with new file name (without extension)
-              setName(selectedFile.name.replace(/\.[^/.]+$/, ""));
-            }
-          }}
-        />
+          multiple
+          onChange={e => {
+            const MAX_SIZE_MB = 5;
+            const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
-        <input
-          type="text"
-          placeholder="Enter image name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+            const selectedFiles = Array.from(e.target.files)
+              .filter(file => {
+                if (file.size > MAX_SIZE_BYTES) {
+                  alert(`${file.name} is too large (max ${MAX_SIZE_MB}MB)`);
+                  return false;
+                }
+                return true;
+              })
+              .map(file => ({ file, name: file.name.replace(/\.[^/.]+$/, "") }));
+
+            setFiles(selectedFiles);
+          }}
         />
         <button onClick={handleUpload} disabled={loading}>
           {loading ? "Uploading..." : "Upload"}
         </button>
       </div>
 
+      {/* Editable names + thumbnails */}
+      {files.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
+          {files.map((f, i) => (
+            <div key={i} style={{ textAlign: "center", width: "120px", position: "relative" }}>
+              <img
+                src={URL.createObjectURL(f.file)}
+                alt={f.name}
+                style={{ width: "100%", borderRadius: "5px" }}
+              />
+              <input
+                type="text"
+                value={f.name}
+                onChange={(e) => {
+                  const newFiles = [...files];
+                  newFiles[i].name = e.target.value;
+                  setFiles(newFiles);
+                }}
+                style={{
+                  width: "100%",          // 👈 makes it full width
+                  minWidth: "100px",      // 👈 ensures it never collapses
+                  marginTop: "5px",
+                  boxSizing: "border-box" // 👈 prevents overflow
+                }}
+              />
+              <button
+                onClick={() => {
+                  const newFiles = files.filter((_, index) => index !== i);
+                  setFiles(newFiles);
+                }}
+                style={{
+                  position: "absolute",
+                  top: "5px",
+                  right: "5px",
+                  background: "red",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "20px",
+                  height: "20px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  lineHeight: "18px",
+                  padding: 0,
+                }}
+                title="Remove"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <p style={{ color: "red" }}>{error}</p>}
-      {url && <p>Uploaded! ✅ {url}</p>}
+      {url && <p>{url}</p>}
 
       {/* Gallery */}
       <h2>📂 Gallery ({folder})</h2>
@@ -182,7 +262,7 @@ export default function UploadMovie() {
         <p>No images found in this folder.</p>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "15px" }}>
-          {images.map((img) => {
+          {images.map(img => {
             const shortId = img.public_id.replace(`${folder}/`, "");
             const isDeleting = deleting.has(shortId);
 

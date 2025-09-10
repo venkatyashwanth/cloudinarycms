@@ -2,37 +2,53 @@ import cloudinary from "@/lib/cloudinary";
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { file, publicId, folder } = body;
+    const { files, folder } = await req.json();
 
-    if (!file || !publicId || !folder) {
+    if (!files?.length || !folder) {
       return new Response(
-        JSON.stringify({ error: "File, publicId, and folder are required" }),
+        JSON.stringify({ error: "Files array and folder are required" }),
         { status: 400 }
       );
     }
 
-    // Check if image exists
-    try {
-      await cloudinary.api.resource(`${folder}/${publicId}`);
-      return new Response(
-        JSON.stringify({ error: "File name already exists ❌" }),
-        { status: 400 }
-      );
-    } catch {
-      // Not found → safe to continue
+    const uploadedResults = [];
+    const skippedFiles = [];
+    const failedFiles = [];
+
+    for (const { file, publicId } of files) {
+      if (!file || !publicId) continue;
+
+      try {
+        // Check if file already exists
+        await cloudinary.api.resource(`${folder}/${publicId}`);
+        skippedFiles.push(publicId);
+        continue; // skip upload
+      } catch {
+        // File not found → proceed to upload
+      }
+
+      try {
+        const uploadRes = await cloudinary.uploader.upload(file, {
+          folder,
+          public_id: publicId,
+          overwrite: false,
+          unique_filename: false,
+        });
+        uploadedResults.push({ url: uploadRes.secure_url, publicId });
+      } catch (err) {
+        console.error(`Failed to upload ${publicId}:`, err.message);
+        failedFiles.push({ publicId, error: err.message });
+      }
     }
 
-    const uploadRes = await cloudinary.uploader.upload(file, {
-      folder: folder,
-      public_id: publicId,
-      overwrite: false,
-      unique_filename: false,
-    });
-
-    return new Response(JSON.stringify({ url: uploadRes.secure_url }), {
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({
+        uploaded: uploadedResults,
+        skipped: skippedFiles,
+        failed: failedFiles,
+      }),
+      { status: 200 }
+    );
   } catch (err) {
     console.error("Upload error:", err);
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
