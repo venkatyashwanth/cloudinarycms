@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { logout } from "../login/actions";
 
 export default function UploadMovie() {
   const [files, setFiles] = useState([]); // Array of { file: File, name: string }
@@ -154,176 +155,180 @@ export default function UploadMovie() {
   };
 
   return (
-    <div>
-      <h1>🎬 Upload Media Files</h1>
-
-      {/* Folder Dropdown */}
-      <div style={{ marginBottom: "10px" }}>
-        <label>
-          Select Folder:{" "}
-          <select value={folder} onChange={e => setFolder(e.target.value)} style={{ minWidth: "200px" }}>
-            {folders.map(f => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {/* Upload Form */}
+    <>
       <div>
-        <input
-          type="file"
-          ref={fileInputRef}
-          multiple
-          onChange={e => {
-            const MAX_SIZE_MB = 5;
-            const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+        <h1>🎬 Upload Media Files</h1>
 
-            const selectedFiles = Array.from(e.target.files)
-              .filter(file => {
-                if (file.size > MAX_SIZE_BYTES) {
-                  alert(`${file.name} is too large (max ${MAX_SIZE_MB}MB)`);
-                  return false;
-                }
-                return true;
-              })
-              .map(file => ({ file, name: file.name.replace(/\.[^/.]+$/, "") }));
-
-            setFiles(selectedFiles);
-          }}
-        />
-        <button onClick={handleUpload} disabled={loading}>
-          {loading ? "Uploading..." : "Upload"}
-        </button>
-      </div>
-
-      {/* Editable names + thumbnails */}
-      {files.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
-          {files.map((f, i) => (
-            <div key={i} style={{ textAlign: "center", width: "120px", position: "relative" }}>
-              <img
-                src={URL.createObjectURL(f.file)}
-                alt={f.name}
-                style={{ width: "100%", borderRadius: "5px" }}
-              />
-              <input
-                type="text"
-                value={f.name}
-                onChange={(e) => {
-                  const newFiles = [...files];
-                  newFiles[i].name = e.target.value;
-                  setFiles(newFiles);
-                }}
-                style={{
-                  width: "100%",          // 👈 makes it full width
-                  minWidth: "100px",      // 👈 ensures it never collapses
-                  marginTop: "5px",
-                  boxSizing: "border-box" // 👈 prevents overflow
-                }}
-              />
-              <button
-                onClick={() => {
-                  const newFiles = files.filter((_, index) => index !== i);
-                  setFiles(newFiles);
-                }}
-                style={{
-                  position: "absolute",
-                  top: "5px",
-                  right: "5px",
-                  background: "red",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "50%",
-                  width: "20px",
-                  height: "20px",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  lineHeight: "18px",
-                  padding: 0,
-                }}
-                title="Remove"
-              >
-                ×
-              </button>
-            </div>
-          ))}
+        {/* Folder Dropdown */}
+        <div style={{ marginBottom: "10px" }}>
+          <label>
+            Select Folder:{" "}
+            <select value={folder} onChange={e => setFolder(e.target.value)} style={{ minWidth: "200px" }}>
+              {folders.map(f => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </label>
         </div>
-      )}
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {url && <p>{url}</p>}
+        {/* Upload Form */}
+        <div>
+          <input
+            type="file"
+            ref={fileInputRef}
+            multiple
+            onChange={e => {
+              const MAX_SIZE_MB = 5;
+              const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
-      {/* Gallery */}
-      <h2>📂 Gallery ({folder})</h2>
-      {galleryLoading ? (
-        <p>Loading images...</p>
-      ) : images.length === 0 ? (
-        <p>No images found in this folder.</p>
-      ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "15px" }}>
-          {images.map(img => {
-            const shortId = img.public_id.replace(`${folder}/`, "");
-            const isDeleting = deleting.has(shortId);
+              const selectedFiles = Array.from(e.target.files)
+                .filter(file => {
+                  if (file.size > MAX_SIZE_BYTES) {
+                    alert(`${file.name} is too large (max ${MAX_SIZE_MB}MB)`);
+                    return false;
+                  }
+                  return true;
+                })
+                .map(file => ({ file, name: file.name.replace(/\.[^/.]+$/, "") }));
 
-            return (
-              <div
-                key={img.public_id}
-                style={{
-                  width: "150px",
-                  textAlign: "center",
-                  border: "1px solid #ccc",
-                  borderRadius: "8px",
-                  padding: "5px",
-                }}
-              >
+              setFiles(selectedFiles);
+            }}
+          />
+          <button onClick={handleUpload} disabled={loading}>
+            {loading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+
+        {/* Editable names + thumbnails */}
+        {files.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
+            {files.map((f, i) => (
+              <div key={i} style={{ textAlign: "center", width: "120px", position: "relative" }}>
                 <img
-                  src={img.secure_url}
-                  alt={img.public_id}
-                  style={{ width: "100%", borderRadius: "8px", cursor: "pointer" }}
-                  onClick={() => handleCopy(img.secure_url, img.public_id)}
+                  src={URL.createObjectURL(f.file)}
+                  alt={f.name}
+                  style={{ width: "100%", borderRadius: "5px" }}
                 />
-                <p style={{ fontSize: "12px", wordBreak: "break-word" }}>{shortId}</p>
-
-                {/* Copy Button */}
-                <button
-                  onClick={() => handleCopy(img.secure_url, img.public_id)}
-                  style={{
-                    marginTop: "5px",
-                    background: copied === img.public_id ? "green" : "#007bff",
-                    color: "white",
-                    border: "none",
-                    padding: "5px 10px",
-                    cursor: "pointer",
-                    borderRadius: "5px",
+                <input
+                  type="text"
+                  value={f.name}
+                  onChange={(e) => {
+                    const newFiles = [...files];
+                    newFiles[i].name = e.target.value;
+                    setFiles(newFiles);
                   }}
-                >
-                  {copied === img.public_id ? "Copied!" : "Copy URL"}
-                </button>
-
-                {/* Delete Button */}
-                <button
-                  onClick={() => handleDelete(shortId)}
                   style={{
+                    width: "100%",          // 👈 makes it full width
+                    minWidth: "100px",      // 👈 ensures it never collapses
                     marginTop: "5px",
+                    boxSizing: "border-box" // 👈 prevents overflow
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const newFiles = files.filter((_, index) => index !== i);
+                    setFiles(newFiles);
+                  }}
+                  style={{
+                    position: "absolute",
+                    top: "5px",
+                    right: "5px",
                     background: "red",
                     color: "white",
                     border: "none",
-                    padding: "5px 10px",
-                    cursor: isDeleting ? "not-allowed" : "pointer",
-                    borderRadius: "5px",
-                    display: "block",
-                    width: "100%",
+                    borderRadius: "50%",
+                    width: "20px",
+                    height: "20px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    lineHeight: "18px",
+                    padding: 0,
                   }}
-                  disabled={isDeleting}
+                  title="Remove"
                 >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                  ×
                 </button>
               </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+
+        {error && <p style={{ color: "red" }}>{error}</p>}
+        {url && <p>{url}</p>}
+
+        {/* Gallery */}
+        <h2>📂 Gallery ({folder})</h2>
+        {galleryLoading ? (
+          <p>Loading images...</p>
+        ) : images.length === 0 ? (
+          <p>No images found in this folder.</p>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "15px" }}>
+            {images.map(img => {
+              const shortId = img.public_id.replace(`${folder}/`, "");
+              const isDeleting = deleting.has(shortId);
+
+              return (
+                <div
+                  key={img.public_id}
+                  style={{
+                    width: "150px",
+                    textAlign: "center",
+                    border: "1px solid #ccc",
+                    borderRadius: "8px",
+                    padding: "5px",
+                  }}
+                >
+                  <img
+                    src={img.secure_url}
+                    alt={img.public_id}
+                    style={{ width: "100%", borderRadius: "8px", cursor: "pointer" }}
+                    onClick={() => handleCopy(img.secure_url, img.public_id)}
+                  />
+                  <p style={{ fontSize: "12px", wordBreak: "break-word" }}>{shortId}</p>
+
+                  {/* Copy Button */}
+                  <button
+                    onClick={() => handleCopy(img.secure_url, img.public_id)}
+                    style={{
+                      marginTop: "5px",
+                      background: copied === img.public_id ? "green" : "#007bff",
+                      color: "white",
+                      border: "none",
+                      padding: "5px 10px",
+                      cursor: "pointer",
+                      borderRadius: "5px",
+                    }}
+                  >
+                    {copied === img.public_id ? "Copied!" : "Copy URL"}
+                  </button>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => handleDelete(shortId)}
+                    style={{
+                      marginTop: "5px",
+                      background: "red",
+                      color: "white",
+                      border: "none",
+                      padding: "5px 10px",
+                      cursor: isDeleting ? "not-allowed" : "pointer",
+                      borderRadius: "5px",
+                      display: "block",
+                      width: "100%",
+                    }}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+        <button onClick={() => logout()}>Logout</button>
+    </>
   );
 }
