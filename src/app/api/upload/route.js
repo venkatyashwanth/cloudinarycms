@@ -28,13 +28,23 @@ export async function POST(req) {
       }
 
       try {
+        // Determine resource_type from Base64 prefix
+        let resource_type = "image"; // default
+        if (file.startsWith("data:video/")) resource_type = "video";
+
         const uploadRes = await cloudinary.uploader.upload(file, {
           folder,
           public_id: publicId,
           overwrite: false,
           unique_filename: false,
+          resource_type, // ✅ important for videos
         });
-        uploadedResults.push({ url: uploadRes.secure_url, publicId });
+
+        uploadedResults.push({
+          url: uploadRes.secure_url,
+          publicId,
+          format: uploadRes.format, // ✅ send format for frontend
+        });
       } catch (err) {
         console.error(`Failed to upload ${publicId}:`, err.message);
         failedFiles.push({ publicId, error: err.message });

@@ -2,8 +2,7 @@ import cloudinary from "@/lib/cloudinary";
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { publicId, folder } = body;
+    const { publicId, folder, resource_type = "image" } = await req.json();
 
     if (!publicId || !folder) {
       return new Response(
@@ -12,7 +11,7 @@ export async function POST(req) {
       );
     }
 
-    await cloudinary.uploader.destroy(`${folder}/${publicId}`);
+    await cloudinary.uploader.destroy(`${folder}/${publicId}`, { resource_type });
 
     return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (err) {

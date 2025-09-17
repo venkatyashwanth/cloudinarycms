@@ -10,13 +10,15 @@ export async function GET(req) {
       .max_results(100)
       .execute();
 
-    return new Response(JSON.stringify({ resources: result.resources || [] }), {
-      status: 200,
-    });
+    // Map results to include format & resource_type
+    const resources = (result.resources || []).map(res => ({
+      ...res,
+      resource_type: res.resource_type || "image", // fallback
+    }));
+
+    return new Response(JSON.stringify({ resources }), { status: 200 });
   } catch (err) {
     console.error("List error:", err);
-    return new Response(JSON.stringify({ resources: [], error: err.message }), {
-      status: 500,
-    });
+    return new Response(JSON.stringify({ resources: [], error: err.message }), { status: 500 });
   }
 }
